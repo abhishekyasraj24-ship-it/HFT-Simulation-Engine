@@ -1,0 +1,30 @@
+# Build outputs
+build/
+bin/
+*.o
+*.out
+*.so
+*.dylib
+*.a
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env/
+env/
+.venv/
+
+# Generated simulation data
+data/*
+!data/.gitkeep
+
+# IDEs and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
