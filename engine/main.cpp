@@ -1,5 +1,6 @@
 #include "ExecutionEngine.hpp"
 #include "MarketData.hpp"
+#include "Portfolio.hpp"
 #include "Strategy.hpp"
 
 #include <iomanip>
@@ -134,6 +135,39 @@ int main(int argc, char* argv[]) {
     std::cout << "   - Remaining Best Ask in Book: $"
               << engine.get_order_book().get_best_ask_price().value()
               << " (" << engine.get_order_book().total_ask_volume() << " units available)\n";
+    std::cout << "========================================================\n";
+
+    // --- Module 5 Demonstration: Portfolio & P&L ---
+    std::cout << "\n========================================================\n";
+    std::cout << "   Module 5 Demonstration: Portfolio & P&L Management\n";
+    std::cout << "========================================================\n";
+
+    Portfolio portfolio(20000.0);
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "Starting cash: $" << portfolio.get_cash() << "\n\n";
+
+    // Feed the trades from the market-buy execution above into the portfolio.
+    // The portfolio takes the buyer's perspective on every trade.
+    std::cout << "Applying executed trades from Module 4 demo (buyer's view):\n";
+    for (const auto& trade : exec_res.trades) {
+        bool ok = portfolio.process_trade(trade, OrderSide::Buy);
+        if (ok) {
+            std::cout << "  + Applied: " << trade.to_string_summary() << "\n";
+        } else {
+            std::cout << "  ! Rejected: " << portfolio.get_last_error() << "\n";
+        }
+    }
+
+    // Snapshot at a hypothetical mark-to-market price of $103.00
+    constexpr double mark_price = 103.00;
+    std::cout << "\nPortfolio Snapshot (mark-to-market @ $" << mark_price << "):\n";
+    std::cout << "  Cash             : $" << portfolio.get_cash() << "\n";
+    std::cout << "  Position Qty     : " << portfolio.get_position_quantity() << " units\n";
+    std::cout << "  Avg Entry Price  : $" << portfolio.get_average_entry_price() << "\n";
+    std::cout << "  Realized P&L     : $" << portfolio.get_realized_pnl() << "\n";
+    std::cout << "  Unrealized P&L   : $" << portfolio.get_unrealized_pnl(mark_price) << "\n";
+    std::cout << "  Total P&L        : $" << portfolio.get_total_pnl(mark_price) << "\n";
+    std::cout << "  Total Equity     : $" << portfolio.get_total_equity(mark_price) << "\n";
     std::cout << "========================================================\n";
 
     return 0;

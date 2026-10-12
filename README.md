@@ -17,9 +17,9 @@ A low-latency electronic trading simulation engine designed for learning and exp
 - **Module 2 (Moving Average Crossover Strategy):** Simple Moving Average (SMA) crossover strategy implemented in `engine/` (`Strategy.hpp`, `Strategy.cpp`) and unit tested in `tests/test_strategy.cpp`.
 - **Module 3 (Order Representation):** Structured representation of trading orders (`OrderId`, `OrderSide`, `OrderType`, `OrderStatus`, and validation rules) implemented in `engine/Order.hpp` and unit tested in `tests/test_order.cpp`.
 - **Module 4 (Order Book & Execution Engine):** Price-Time Priority limit order book (`engine/OrderBook.hpp`, `engine/OrderBook.cpp`), trade records (`engine/Trade.hpp`), and matching engine (`engine/ExecutionEngine.hpp`, `engine/ExecutionEngine.cpp`) supporting Market/Limit orders, partial fills, liquidity cancellation, and limit price protection; unit tested in `tests/test_execution_engine.cpp`.
+- **Module 5 (Portfolio & P&L Management):** Long-only portfolio tracker (`engine/Portfolio.hpp`, `engine/Portfolio.cpp`) with VWAP average-cost accounting, realized/unrealized/total P&L, total equity, trade deduplication, and invalid-trade rejection; unit tested in `tests/test_portfolio.cpp`.
 
 ## Planned Features
-- **Risk & Portfolio Management:** Basic checks for simulated positions, cash, and exposure limits.
 - **IPC Layer:** Communication mechanism between the C++ engine and the Python visualizer. The initial implementation will use operating-system pipes to stream events, with other mechanisms explored later.
 - **Visualization Dashboard (Python):** A real-time or near-real-time view of market conditions, order book state, and simulated PnL.
 
@@ -37,10 +37,10 @@ clang++ --version
 ```
 
 ### Build Main Engine
-Compile the engine with market data generation, strategy simulation, and execution engine:
+Compile the engine with all modules (market data, strategy, execution engine, portfolio):
 ```bash
 mkdir -p bin
-c++ -std=c++17 -Wall -Wextra -O2 engine/MarketData.cpp engine/Strategy.cpp engine/OrderBook.cpp engine/ExecutionEngine.cpp engine/main.cpp -o bin/market_data
+c++ -std=c++17 -Wall -Wextra -O2 engine/MarketData.cpp engine/Strategy.cpp engine/OrderBook.cpp engine/ExecutionEngine.cpp engine/Portfolio.cpp engine/main.cpp -o bin/market_data
 ```
 
 ### Run Main Engine
@@ -74,4 +74,11 @@ Compile and run the matching engine and order book test suite:
 ```bash
 c++ -std=c++17 -Wall -Wextra -O2 engine/OrderBook.cpp engine/ExecutionEngine.cpp tests/test_execution_engine.cpp -o bin/test_execution_engine
 ./bin/test_execution_engine
+```
+
+### Build and Run Portfolio Tests
+Compile and run the portfolio and P&L unit test suite:
+```bash
+c++ -std=c++17 -Wall -Wextra -O2 engine/Portfolio.cpp tests/test_portfolio.cpp -o bin/test_portfolio
+./bin/test_portfolio
 ```
