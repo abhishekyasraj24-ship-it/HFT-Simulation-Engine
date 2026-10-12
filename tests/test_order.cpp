@@ -155,6 +155,7 @@ void test_enum_formatting() {
     assert(to_string(OrderType::Limit) == "LIMIT");
 
     assert(to_string(OrderStatus::New) == "NEW");
+    assert(to_string(OrderStatus::PartiallyFilled) == "PARTIALLY_FILLED");
     assert(to_string(OrderStatus::Filled) == "FILLED");
     assert(to_string(OrderStatus::Cancelled) == "CANCELLED");
     assert(to_string(OrderStatus::Rejected) == "REJECTED");

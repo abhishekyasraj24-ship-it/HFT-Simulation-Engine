@@ -1,3 +1,4 @@
+#include "ExecutionEngine.hpp"
 #include "MarketData.hpp"
 #include "Strategy.hpp"
 
@@ -97,6 +98,42 @@ int main(int argc, char* argv[]) {
     std::cout << "Simulation completed (" << total_ticks << " ticks generated).\n";
     std::cout << "Summary: " << buy_signals << " BUY signals, "
               << sell_signals << " SELL signals.\n";
+    std::cout << "========================================================\n";
+
+    // --- Module 4 Demonstration: Simulated Order Execution ---
+    std::cout << "\n========================================================\n";
+    std::cout << "   Module 4 Demonstration: Order Book & Execution Engine\n";
+    std::cout << "========================================================\n";
+    ExecutionEngine engine;
+
+    std::cout << "1. Seeding Order Book with resting limit orders:\n";
+    Order ask1 = Order::create_limit(101, OrderSide::Sell, 50, 101.50);
+    Order ask2 = Order::create_limit(102, OrderSide::Sell, 50, 102.00);
+    Order bid1 = Order::create_limit(103, OrderSide::Buy, 50, 98.50);
+
+    engine.submit_order(ask1);
+    engine.submit_order(ask2);
+    engine.submit_order(bid1);
+
+    std::cout << "   - Resting Asks: 50 @ $101.50, 50 @ $102.00\n";
+    std::cout << "   - Resting Bids: 50 @ $98.50\n";
+    std::cout << "   - Best Bid: $" << std::fixed << std::setprecision(2)
+              << engine.get_order_book().get_best_bid_price().value()
+              << " | Best Ask: $" << engine.get_order_book().get_best_ask_price().value() << "\n";
+
+    std::cout << "\n2. Submitting aggressive Market Buy order for 75 units:\n";
+    Order market_buy{201, OrderSide::Buy, OrderType::Market, 75, std::nullopt, OrderStatus::New, 0};
+    auto exec_res = engine.submit_order(market_buy);
+
+    std::cout << "   - Executed Trades (" << exec_res.trades.size() << "):\n";
+    for (const auto& trade : exec_res.trades) {
+        std::cout << "     * " << trade.to_string_summary() << "\n";
+    }
+    std::cout << "   - Market Order Status: " << to_string(exec_res.order.status)
+              << " (Filled: " << exec_res.order.filled_quantity << "/" << exec_res.order.quantity << ")\n";
+    std::cout << "   - Remaining Best Ask in Book: $"
+              << engine.get_order_book().get_best_ask_price().value()
+              << " (" << engine.get_order_book().total_ask_volume() << " units available)\n";
     std::cout << "========================================================\n";
 
     return 0;

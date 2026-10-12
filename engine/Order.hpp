@@ -35,6 +35,7 @@ enum class OrderType {
  */
 enum class OrderStatus {
     New,
+    PartiallyFilled,
     Filled,
     Cancelled,
     Rejected
@@ -73,6 +74,8 @@ inline std::string to_string(OrderStatus status) {
     switch (status) {
         case OrderStatus::New:
             return "NEW";
+        case OrderStatus::PartiallyFilled:
+            return "PARTIALLY_FILLED";
         case OrderStatus::Filled:
             return "FILLED";
         case OrderStatus::Cancelled:
@@ -93,6 +96,14 @@ struct Order {
     std::uint32_t quantity{0};
     std::optional<double> limit_price{std::nullopt};
     OrderStatus status{OrderStatus::New};
+    std::uint32_t filled_quantity{0};
+
+    /**
+     * @brief Computes remaining unfilled quantity for this order.
+     */
+    std::uint32_t remaining_quantity() const {
+        return (quantity > filled_quantity) ? (quantity - filled_quantity) : 0;
+    }
 
     /**
      * @brief Checks if the order specification is valid according to trading rules.
@@ -147,18 +158,21 @@ struct Order {
         if (limit_price.has_value()) {
             oss << " @ $" << limit_price.value();
         }
+        if (filled_quantity > 0) {
+            oss << " (Filled: " << filled_quantity << "/" << quantity << ")";
+        }
         return oss.str();
     }
 
     // Convenient static factory helpers
     static Order create_market(OrderId id, OrderSide side, std::uint32_t quantity) {
-        Order o{id, side, OrderType::Market, quantity, std::nullopt, OrderStatus::New};
+        Order o{id, side, OrderType::Market, quantity, std::nullopt, OrderStatus::New, 0};
         o.validate();
         return o;
     }
 
     static Order create_limit(OrderId id, OrderSide side, std::uint32_t quantity, double limit_price) {
-        Order o{id, side, OrderType::Limit, quantity, limit_price, OrderStatus::New};
+        Order o{id, side, OrderType::Limit, quantity, limit_price, OrderStatus::New, 0};
         o.validate();
         return o;
     }
