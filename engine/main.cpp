@@ -1,8 +1,10 @@
 #include "ExecutionEngine.hpp"
 #include "MarketData.hpp"
 #include "Portfolio.hpp"
+#include "RiskManager.hpp"
 #include "Strategy.hpp"
 
+#include <cassert>
 #include <iomanip>
 #include <iostream>
 #include <optional>
@@ -168,6 +170,76 @@ int main(int argc, char* argv[]) {
     std::cout << "  Unrealized P&L   : $" << portfolio.get_unrealized_pnl(mark_price) << "\n";
     std::cout << "  Total P&L        : $" << portfolio.get_total_pnl(mark_price) << "\n";
     std::cout << "  Total Equity     : $" << portfolio.get_total_equity(mark_price) << "\n";
+    std::cout << "========================================================\n";
+
+    // --- Module 6 Demonstration: Risk Management System ---
+    std::cout << "\n========================================================\n";
+    std::cout << "   Module 6 Demonstration: Pre-Trade Risk Management\n";
+    std::cout << "========================================================\n";
+
+    // Configure strict risk limits for demonstration purposes:
+    //   - Max 50 units per order
+    //   - Max $5,500 notional per order
+    //   - Max 100 units total position
+    //   - Max $11,000 gross exposure
+    RiskLimits demo_limits;
+    demo_limits.max_order_quantity    = 50;
+    demo_limits.max_order_notional    = 5500.0;
+    demo_limits.max_position_quantity = 100;
+    demo_limits.max_gross_exposure    = 11000.0;
+
+    RiskManager risk_mgr(demo_limits);
+
+    // Use a fresh portfolio starting flat with $50,000 cash
+    Portfolio risk_portfolio(50000.0);
+    constexpr double ref_price = 110.0;
+
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "Risk Limits:\n"
+              << "  max_order_quantity    : " << demo_limits.max_order_quantity << " units\n"
+              << "  max_order_notional    : $" << demo_limits.max_order_notional << "\n"
+              << "  max_position_quantity : " << demo_limits.max_position_quantity << " units\n"
+              << "  max_gross_exposure    : $" << demo_limits.max_gross_exposure << "\n"
+              << "  Reference price       : $" << ref_price << "\n\n";
+
+    // Helper lambda to print a check result
+    auto print_check = [](const std::string& label, const Order& ord,
+                          const RiskCheckResult& result) {
+        std::cout << "  Order: " << ord.to_string_summary() << "\n";
+        if (result.approved) {
+            std::cout << "  [" << label << "] APPROVED\n\n";
+        } else {
+            std::cout << "  [" << label << "] REJECTED: " << result.rejection_reason << "\n\n";
+        }
+    };
+
+    // 1. Approved: buy 50 @ $100 limit → notional $5000 ≤ $5500, position 50 ≤ 100
+    Order risk_order_1 = Order::create_limit(301, OrderSide::Buy, 50, 100.0);
+    auto  risk_res_1   = risk_mgr.check_order(risk_order_1, risk_portfolio, ref_price);
+    print_check("CASE 1 — within all limits", risk_order_1, risk_res_1);
+
+    // 2. Rejected: buy 50 @ $111 limit → notional 50*111=$5550 > $5500
+    Order risk_order_2 = Order::create_limit(302, OrderSide::Buy, 50, 111.0);
+    auto  risk_res_2   = risk_mgr.check_order(risk_order_2, risk_portfolio, ref_price);
+    print_check("CASE 2 — notional exceeds limit", risk_order_2, risk_res_2);
+
+    // 3. Rejected: market buy 101 units → exceeds max_order_quantity (50)
+    Order risk_order_3 = Order::create_market(303, OrderSide::Buy, 51);
+    auto  risk_res_3   = risk_mgr.check_order(risk_order_3, risk_portfolio, ref_price);
+    print_check("CASE 3 — order quantity exceeds limit", risk_order_3, risk_res_3);
+
+    // 4. Rejected: sell on flat portfolio → long-only portfolio, no position to sell
+    Order risk_order_4 = Order::create_market(304, OrderSide::Sell, 10);
+    auto  risk_res_4   = risk_mgr.check_order(risk_order_4, risk_portfolio, ref_price);
+    print_check("CASE 4 — sell with no position (long-only)", risk_order_4, risk_res_4);
+
+    // Confirm portfolio state is completely untouched by all the risk checks
+    assert(risk_portfolio.get_position_quantity() == 0);
+    assert(risk_portfolio.get_cash() == 50000.0);
+    std::cout << "  Portfolio state after all risk checks: cash=$"
+              << risk_portfolio.get_cash()
+              << ", position=" << risk_portfolio.get_position_quantity() << " units\n";
+    std::cout << "  (Unchanged — risk checks are read-only)\n";
     std::cout << "========================================================\n";
 
     return 0;

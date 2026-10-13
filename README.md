@@ -18,6 +18,22 @@ A low-latency electronic trading simulation engine designed for learning and exp
 - **Module 3 (Order Representation):** Structured representation of trading orders (`OrderId`, `OrderSide`, `OrderType`, `OrderStatus`, and validation rules) implemented in `engine/Order.hpp` and unit tested in `tests/test_order.cpp`.
 - **Module 4 (Order Book & Execution Engine):** Price-Time Priority limit order book (`engine/OrderBook.hpp`, `engine/OrderBook.cpp`), trade records (`engine/Trade.hpp`), and matching engine (`engine/ExecutionEngine.hpp`, `engine/ExecutionEngine.cpp`) supporting Market/Limit orders, partial fills, liquidity cancellation, and limit price protection; unit tested in `tests/test_execution_engine.cpp`.
 - **Module 5 (Portfolio & P&L Management):** Long-only portfolio tracker (`engine/Portfolio.hpp`, `engine/Portfolio.cpp`) with VWAP average-cost accounting, realized/unrealized/total P&L, total equity, trade deduplication, and invalid-trade rejection; unit tested in `tests/test_portfolio.cpp`.
+- **Module 6 (Risk Management System):** Pre-trade risk gate (`engine/RiskManager.hpp`, `engine/RiskManager.cpp`) that validates proposed orders against configurable `RiskLimits` before execution. Checks include structural order validity, per-order quantity, per-order notional, position-size ceiling, long-only (no short-selling) enforcement, and gross-exposure ceiling. The `RiskManager` is stateless and read-only — it never modifies the portfolio or executes orders. Unit tested in `tests/test_risk_manager.cpp`.
+
+### Risk Management Policies (Module 6)
+
+| Limit | Convention | `0` / `0.0` means |
+|---|---|---|
+| `max_order_quantity` | Max units in a single order (inclusive) | Unlimited |
+| `max_order_notional` | Max cash value per order: `qty × price` (inclusive) | Unlimited |
+| `max_position_quantity` | Max long position units (inclusive) | Unlimited |
+| `max_gross_exposure` | Max `projected_position × ref_market_price` (inclusive) | Unlimited |
+
+**Reference-price policy:**
+- *Notional*: limit orders use `limit_price`; market orders use caller-supplied `ref_market_price`.
+- *Exposure*: always uses `ref_market_price` × projected position after the proposed order.
+
+**Assumptions:** long-only portfolio, no fees/slippage, single simulated asset, no concurrency.
 
 ## Planned Features
 - **IPC Layer:** Communication mechanism between the C++ engine and the Python visualizer. The initial implementation will use operating-system pipes to stream events, with other mechanisms explored later.
@@ -37,10 +53,14 @@ clang++ --version
 ```
 
 ### Build Main Engine
-Compile the engine with all modules (market data, strategy, execution engine, portfolio):
+Compile the engine with all modules (market data, strategy, execution engine, portfolio, risk manager):
 ```bash
 mkdir -p bin
-c++ -std=c++17 -Wall -Wextra -O2 engine/MarketData.cpp engine/Strategy.cpp engine/OrderBook.cpp engine/ExecutionEngine.cpp engine/Portfolio.cpp engine/main.cpp -o bin/market_data
+c++ -std=c++17 -Wall -Wextra -O2 \
+    engine/MarketData.cpp engine/Strategy.cpp \
+    engine/OrderBook.cpp engine/ExecutionEngine.cpp \
+    engine/Portfolio.cpp engine/RiskManager.cpp \
+    engine/main.cpp -o bin/market_data
 ```
 
 ### Run Main Engine
@@ -81,4 +101,13 @@ Compile and run the portfolio and P&L unit test suite:
 ```bash
 c++ -std=c++17 -Wall -Wextra -O2 engine/Portfolio.cpp tests/test_portfolio.cpp -o bin/test_portfolio
 ./bin/test_portfolio
+```
+
+### Build and Run Risk Manager Tests
+Compile and run the pre-trade risk management unit test suite:
+```bash
+c++ -std=c++17 -Wall -Wextra -O2 \
+    engine/Portfolio.cpp engine/RiskManager.cpp \
+    tests/test_risk_manager.cpp -o bin/test_risk_manager
+./bin/test_risk_manager
 ```
