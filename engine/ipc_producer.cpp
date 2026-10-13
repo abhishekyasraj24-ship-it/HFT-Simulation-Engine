@@ -127,8 +127,6 @@ int main(int argc, char* argv[]) {
                         ++trades_emitted;
                         writer.write_trade(trade);
                         portfolio.apply_trade(trade, OrderSide::Buy);
-                        ++portfolio_updates_emitted;
-                        writer.write_portfolio(portfolio, tick.price);
                     }
                 }
             }
@@ -148,11 +146,13 @@ int main(int argc, char* argv[]) {
                         ++trades_emitted;
                         writer.write_trade(trade);
                         portfolio.apply_trade(trade, OrderSide::Sell);
-                        ++portfolio_updates_emitted;
-                        writer.write_portfolio(portfolio, tick.price);
                     }
                 }
             }
+
+            // Emit mark-to-market portfolio snapshot after processing each market tick
+            ++portfolio_updates_emitted;
+            writer.write_portfolio(portfolio, tick.price);
         }
 
         // 3. Emit clean completion message

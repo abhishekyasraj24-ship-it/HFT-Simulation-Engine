@@ -20,6 +20,7 @@ A low-latency electronic trading simulation engine designed for learning and exp
 - **Module 5 (Portfolio & P&L Management):** Long-only portfolio tracker (`engine/Portfolio.hpp`, `engine/Portfolio.cpp`) with VWAP average-cost accounting, realized/unrealized/total P&L, total equity, trade deduplication, and invalid-trade rejection; unit tested in `tests/test_portfolio.cpp`.
 - **Module 6 (Risk Management System):** Pre-trade risk gate (`engine/RiskManager.hpp`, `engine/RiskManager.cpp`) that validates proposed orders against configurable `RiskLimits` before execution. Checks include structural order validity, per-order quantity, per-order notional, position-size ceiling, long-only (no short-selling) enforcement, and gross-exposure ceiling. The `RiskManager` is stateless and read-only — it never modifies the portfolio or executes orders. Unit tested in `tests/test_risk_manager.cpp`.
 - **Module 7 (C++ ↔ Python IPC Using OS Pipes):** Reliable inter-process communication using operating-system pipes between the C++ engine producer and a Python consumer. Implements a lightweight, versioned, newline-delimited, tab-separated protocol (`engine/IPCProtocol.hpp`, `engine/IPCProtocol.cpp`, `engine/ipc_producer.cpp`) and a pure standard-library Python consumer and launcher (`visualizer/ipc_consumer.py`, `visualizer/run_ipc_demo.py`). Protocol data travels over `stdout` while diagnostic and error logs are isolated to `stderr`. Unit tested in C++ (`tests/test_ipc_protocol.cpp`) and Python (`tests/test_ipc_consumer.py`).
+- **Module 8 (Live Python Trading Visualizer):** Real-time Matplotlib trading visualizer (`visualizer/dashboard.py`, `visualizer/dashboard_state.py`) receiving live simulation events from the C++ producer over standard OS pipes. Renders live market prices with classified buy/sell trade markers, tracks portfolio P&L over time, displays authoritative portfolio metrics, and logs execution lifecycle status. Tested in headless and integration modes in `tests/test_dashboard.py`.
 
 ### Risk Management Policies (Module 6)
 
@@ -69,18 +70,46 @@ The C++ engine acts as an event producer, streaming simulation events across sta
 6. **Unexpected EOF:** If the stream terminates before receiving `END`, the consumer raises an `UnexpectedEOFError`.
 7. **Blank Lines Policy:** Empty or whitespace-only lines are ignored and skipped by default. In strict mode (`ignore_blank_lines=False`), encountering a blank line raises a `ProtocolError`.
 
+### Live Visualizer Dashboard (Module 8)
+
+The Python visualizer dashboard (`visualizer/dashboard.py`) consumes the real-time simulation stream and renders an interactive multi-panel GUI:
+- **Price Chart:** Incremental market price against tick number with trade markers.
+- **Trade Markers:** Portfolio Buys (green `^`), Portfolio Sells (red `v`), and Unclassified trades (gray `o`) plotted at the execution price and tick.
+- **Portfolio P&L Chart:** Real-time plots for Total P&L, Realized P&L, and Unrealized P&L over time.
+- **Portfolio Metrics Panel:** Displays authoritative values for Cash, Position, Average Entry Price, Realized P&L, Unrealized P&L, Total P&L, and Total Equity.
+- **Status & Execution Log:** Live engine lifecycle status (`RUNNING`, `COMPLETED`, `ERROR`), tick/trade counters, and the 5 most recent executions.
+
+#### Trade-Side Inference Policy & Limitations
+The IPC `TRADE` schema reports executed trade IDs, order IDs, price, and quantity, but does not explicitly tag which side belonged to the simulated portfolio.
+The dashboard correlates each trade with subsequent `PORTFOLIO` position updates:
+- If `position_quantity` increased, the trade is classified as **BUY**.
+- If `position_quantity` decreased, the trade is classified as **SELL**.
+- If position did not change (or cannot be unambiguously attributed), the trade is classified as **UNCLASSIFIED**.
+No artificial trade sides are ever invented.
+
 ## Planned Features
-- **Visualization Dashboard (Python):** A real-time terminal or graphical dashboard consuming IPC streams to display live charts, order book depth, and P&L progression.
+- **Interactive Order Injection:** Ability to inject manual buy/sell orders via the visualizer interface into the running matching engine.
+- **Order Book Depth Visualization:** Level-2 book depth ladders (bids vs. asks).
 
 ## Building and Running
 
 ### Prerequisites
 - A modern C++ compiler supporting C++17 or higher (`clang++` or `g++`).
-- Python 3.8+ (using standard library only).
+- Python 3.8+ (using standard library).
+- Matplotlib 3.5+ (for graphical dashboard).
 
+Install Matplotlib:
+```bash
+pip install matplotlib
+# or
+python3 -m pip install matplotlib
+```
+
+Verify prerequisites:
 ```bash
 c++ --version
 python3 --version
+python3 -c "import matplotlib; print('Matplotlib version:', matplotlib.__version__)"
 ```
 
 ### Build Main Engine
@@ -106,7 +135,7 @@ Run with custom parameters (`[initial_price] [total_ticks] [seed]`):
 ./bin/market_data 150.0 10 42
 ```
 
-### Build and Run IPC Producer (Module 7)
+### Build IPC Producer (Module 7 & 8)
 Compile the standalone C++ IPC producer binary:
 ```bash
 mkdir -p bin
@@ -117,53 +146,36 @@ c++ -std=c++17 -Wall -Wextra -O2 \
     engine/ipc_producer.cpp -o bin/ipc_producer
 ```
 
-### Run End-to-End C++ ↔ Python IPC Demonstration
-Launch the full pipeline where Python executes the C++ producer, consumes standard output via an OS pipe, and prints incoming events in real time:
+### Run Terminal IPC Demonstration
+Launch the terminal stream consumer:
 ```bash
-python3 visualizer/run_ipc_demo.py
+python3 visualizer/run_ipc_demo.py --ticks 10 --seed 42
+```
+
+### Launch Live Trading Visualizer Dashboard (Module 8)
+Launch the graphical live dashboard:
+```bash
+python3 visualizer/dashboard.py
 ```
 
 Options:
 ```bash
-# Customize tick count, seed, or executable path:
-python3 visualizer/run_ipc_demo.py --ticks 20 --seed 100 --price 120.0
+# Custom parameters: 50 ticks, seed 123, initial price $105.0, refresh interval 100ms
+python3 visualizer/dashboard.py --ticks 50 --seed 123 --price 105.0 --interval 100
+
+# Headless mode (renders and saves screenshot to disk without GUI window)
+python3 visualizer/dashboard.py --headless --output build/dashboard.png
 ```
 
-Expected high-level output:
-```text
-=================================================================
-   HFT Simulation Engine: C++ ↔ Python IPC Demonstration
-=================================================================
-Producer Executable : /path/to/bin/ipc_producer
-Producer Arguments  : --ticks 10 --seed 42 --price 100.0 --cash 10000.0
------------------------------------------------------------------
-Listening on standard output OS pipe...
------------------------------------------------------------------
-[STREAM START] Protocol Version: 1
-[PORTFOLIO] Pos: 0 units | Cash: $10000.00 | AvgCost: $0.00 | Realized PnL: $+0.00 | Unrealized PnL: $+0.00 | Total PnL: $+0.00
-[TICK #01] Market Price: $100.2965
-[TICK #02] Market Price: $99.9800
-[TICK #03] Market Price: $100.2597
-[TRADE #1] 30 units @ $100.2597 (Buyer #2, Seller #1)
-[PORTFOLIO] Pos: 30 units | Cash: $6992.21 | AvgCost: $100.26 | Realized PnL: $+0.00 | Unrealized PnL: $+0.00 | Total PnL: $+0.00
-...
-[STREAM END] End record received (v1)
------------------------------------------------------------------
-=== IPC CONSUMPTION SUMMARY ===
-Protocol Version   : 1
-Ticks Received     : 10
-Trades Received    : 2
-Portfolio Updates  : 3
-End Record Received: Yes
-Producer Exit Code : 0
-Total Messages     : 17
-=================================================================
-```
+**Interactive Controls:**
+- Press `p` or `Space` in the dashboard window to pause or resume display updates. (The background IPC stream continues buffering to ensure the C++ engine is never blocked).
+- Close the window or press `Ctrl+C` in the terminal to cleanly terminate the C++ producer subprocess.
 
 ### Troubleshooting
-- **Producer binary not found (`FileNotFoundError`):** Ensure you ran the build step for `bin/ipc_producer` before running `run_ipc_demo.py`. You can explicitly pass the binary path using `--producer-bin <path>`.
-- **Pipe Deadlock Prevention:** The Python launcher drains `stderr` on a dedicated background thread while reading `stdout` incrementally on the main thread. This prevents standard OS pipe buffer exhaustion from blocking either process.
-- **Malformed Protocol Line (`ProtocolError`):** Ensure custom C++ producers write only tab-separated records to `stdout` and flush after every message. All logs must go to `stderr`.
+- **Missing Matplotlib (`ModuleNotFoundError: No module named 'matplotlib'`):** Install Matplotlib via `pip install matplotlib`.
+- **Display/Backend Errors (headless environments):** If running on a headless server or CI without an active X11/Wayland/Cocoa display, pass `--headless` to render and save directly to an image file.
+- **Producer binary not found (`FileNotFoundError`):** Compile `bin/ipc_producer` first, or specify `--producer-bin <path>`.
+- **Pipe Deadlock Prevention:** `IPCLauncher` drains `stderr` on a dedicated daemon thread while the dashboard drains `stdout` into a thread-safe event queue, preventing OS pipe buffer deadlocks.
 
 ---
 
@@ -212,4 +224,9 @@ c++ -std=c++17 -Wall -Wextra -O2 \
 ### Run IPC Protocol Python Tests (Module 7)
 ```bash
 python3 -m unittest tests/test_ipc_consumer.py
+```
+
+### Run Visualizer Dashboard Python Tests (Module 8)
+```bash
+python3 -m unittest tests/test_dashboard.py
 ```

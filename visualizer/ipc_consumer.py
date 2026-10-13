@@ -340,6 +340,7 @@ class IPCLauncher:
         self.executable_path = executable_path or self._discover_default_executable()
         self.args = args or []
         self.consumer = consumer or IPCProtocolConsumer()
+        self.process: Optional[subprocess.Popen] = None
 
     @staticmethod
     def _discover_default_executable() -> str:
@@ -400,6 +401,7 @@ class IPCLauncher:
                 text=True,
                 bufsize=1,  # Line-buffered
             )
+            self.process = process
 
             # Background thread prevents pipe deadlock if child fills stderr buffer
             stderr_thread = threading.Thread(
@@ -474,3 +476,16 @@ class IPCLauncher:
             "counts": dict(self.consumer.message_counts),
             "messages": messages,
         }
+
+    def terminate(self) -> None:
+        """Terminates the child process if it is currently running."""
+        proc = self.process
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1.0)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
