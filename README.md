@@ -21,6 +21,7 @@ A low-latency electronic trading simulation engine designed for learning and exp
 - **Module 6 (Risk Management System):** Pre-trade risk gate (`engine/RiskManager.hpp`, `engine/RiskManager.cpp`) that validates proposed orders against configurable `RiskLimits` before execution. Checks include structural order validity, per-order quantity, per-order notional, position-size ceiling, long-only (no short-selling) enforcement, and gross-exposure ceiling. The `RiskManager` is stateless and read-only — it never modifies the portfolio or executes orders. Unit tested in `tests/test_risk_manager.cpp`.
 - **Module 7 (C++ ↔ Python IPC Using OS Pipes):** Reliable inter-process communication using operating-system pipes between the C++ engine producer and a Python consumer. Implements a lightweight, versioned, newline-delimited, tab-separated protocol (`engine/IPCProtocol.hpp`, `engine/IPCProtocol.cpp`, `engine/ipc_producer.cpp`) and a pure standard-library Python consumer and launcher (`visualizer/ipc_consumer.py`, `visualizer/run_ipc_demo.py`). Protocol data travels over `stdout` while diagnostic and error logs are isolated to `stderr`. Unit tested in C++ (`tests/test_ipc_protocol.cpp`) and Python (`tests/test_ipc_consumer.py`).
 - **Module 8 (Live Python Trading Visualizer):** Real-time Matplotlib trading visualizer (`visualizer/dashboard.py`, `visualizer/dashboard_state.py`) receiving live simulation events from the C++ producer over standard OS pipes. Renders live market prices with classified buy/sell trade markers, tracks portfolio P&L over time, displays authoritative portfolio metrics, and logs execution lifecycle status. Tested in headless and integration modes in `tests/test_dashboard.py`.
+- **Module 9 (Performance Benchmarking & Latency Measurement):** High-throughput C++17 benchmarking suite (`benchmarks/benchmark_market_data.cpp`, `benchmarks/benchmark_order_execution.cpp`, `benchmarks/BenchmarkUtils.hpp`) measuring raw simulation throughput (ops/sec) and per-operation latency distributions (median/p50, p95, p99) under isolated, deterministic conditions without I/O or IPC overhead. Saves reproducible machine-readable RFC 4180 CSV reports in `benchmark_results/`. Unit tested in `tests/test_benchmark.cpp`. Full documentation in `benchmarks/README.md`.
 
 ### Risk Management Policies (Module 6)
 
@@ -179,6 +180,45 @@ python3 visualizer/dashboard.py --headless --output build/dashboard.png
 
 ---
 
+## Performance Benchmarking (Module 9)
+
+A standalone C++ benchmarking suite to evaluate raw simulation throughput (operations/second) and local single-operation latency distributions (median/p50, p95, p99) under isolated, deterministic conditions. All setup and I/O are kept outside timed loops, and results are written to machine-readable RFC 4180 CSV files in `benchmark_results/`.
+
+For complete documentation on latency isolation, warm-up phases, and methodology, see [`benchmarks/README.md`](benchmarks/README.md).
+
+### Build Benchmark Binaries
+```bash
+mkdir -p bin benchmark_results
+
+# Market Data Throughput & Latency Benchmark
+c++ -std=c++17 -Wall -Wextra -Werror -O3 \
+    engine/MarketData.cpp benchmarks/benchmark_market_data.cpp \
+    -o bin/benchmark_market_data
+
+# Order Execution Throughput & Latency Benchmark
+c++ -std=c++17 -Wall -Wextra -Werror -O3 \
+    engine/OrderBook.cpp engine/ExecutionEngine.cpp \
+    benchmarks/benchmark_order_execution.cpp \
+    -o bin/benchmark_order_execution
+```
+
+### Run Benchmarks
+```bash
+# Run standard Market Data suite (100k, 1M, 5M ticks + 100k latency samples)
+./bin/benchmark_market_data
+
+# Custom workload size or seed
+./bin/benchmark_market_data --ticks 1000000 --seed 42 --latency-samples 100000
+
+# Run standard Order Execution suite (10k, 100k, 500k ops for resting and matching)
+./bin/benchmark_order_execution
+
+# Custom operations count
+./bin/benchmark_order_execution --ops 200000 --latency-samples 100000
+```
+
+---
+
 ## Running Unit Tests
 
 ### Build and Run Strategy Tests (Module 2)
@@ -219,6 +259,14 @@ c++ -std=c++17 -Wall -Wextra -O2 \
     engine/Portfolio.cpp engine/IPCProtocol.cpp \
     tests/test_ipc_protocol.cpp -o bin/test_ipc_protocol
 ./bin/test_ipc_protocol
+```
+
+### Build and Run Benchmark Utilities Unit Tests (Module 9)
+```bash
+c++ -std=c++17 -Wall -Wextra -Werror -O3 \
+    engine/MarketData.cpp engine/OrderBook.cpp engine/ExecutionEngine.cpp \
+    tests/test_benchmark.cpp -o bin/test_benchmark
+./bin/test_benchmark
 ```
 
 ### Run IPC Protocol Python Tests (Module 7)
