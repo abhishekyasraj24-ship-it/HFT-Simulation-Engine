@@ -22,6 +22,7 @@ A low-latency electronic trading simulation engine designed for learning and exp
 - **Module 7 (C++ ↔ Python IPC Using OS Pipes):** Reliable inter-process communication using operating-system pipes between the C++ engine producer and a Python consumer. Implements a lightweight, versioned, newline-delimited, tab-separated protocol (`engine/IPCProtocol.hpp`, `engine/IPCProtocol.cpp`, `engine/ipc_producer.cpp`) and a pure standard-library Python consumer and launcher (`visualizer/ipc_consumer.py`, `visualizer/run_ipc_demo.py`). Protocol data travels over `stdout` while diagnostic and error logs are isolated to `stderr`. Unit tested in C++ (`tests/test_ipc_protocol.cpp`) and Python (`tests/test_ipc_consumer.py`).
 - **Module 8 (Live Python Trading Visualizer):** Real-time Matplotlib trading visualizer (`visualizer/dashboard.py`, `visualizer/dashboard_state.py`) receiving live simulation events from the C++ producer over standard OS pipes. Renders live market prices with classified buy/sell trade markers, tracks portfolio P&L over time, displays authoritative portfolio metrics, and logs execution lifecycle status. Tested in headless and integration modes in `tests/test_dashboard.py`.
 - **Module 9 (Performance Benchmarking & Latency Measurement):** High-throughput C++17 benchmarking suite (`benchmarks/benchmark_market_data.cpp`, `benchmarks/benchmark_order_execution.cpp`, `benchmarks/BenchmarkUtils.hpp`) measuring raw simulation throughput (ops/sec) and per-operation latency distributions (median/p50, p95, p99) under isolated, deterministic conditions without I/O or IPC overhead. Saves reproducible machine-readable RFC 4180 CSV reports in `benchmark_results/`. Unit tested in `tests/test_benchmark.cpp`. Full documentation in `benchmarks/README.md`.
+- **Module 10 (End-to-End Integration and Reliability Testing):** Repeatable full-project verification workflow (`scripts/run_all_tests.sh`) orchestrating compilation of all C++ unit test suites, standalone producer, and benchmark executables; execution of Python unit and integration suites; real producer-to-consumer IPC pipe streaming; headless Matplotlib dashboard smoke test; and isolated benchmark smoke tests. Comprehensive integration test suite (`tests/test_integration.py`) covering seeded simulation reproducibility, protocol versioning and clean termination lifecycle, mark-to-market and realized P&L accounting, risk manager pre-trade order rejection, event sequencing, producer CLI edge cases, process/pipe deadlock prevention, and subprocess reaping.
 
 ### Risk Management Policies (Module 6)
 
@@ -278,3 +279,59 @@ python3 -m unittest tests/test_ipc_consumer.py
 ```bash
 python3 -m unittest tests/test_dashboard.py
 ```
+
+### Run End-to-End Integration & Reliability Tests (Module 10)
+```bash
+python3 -m unittest -v tests/test_integration.py
+```
+
+### Run All Python Test Suites (Discovery)
+```bash
+python3 -m unittest discover -s tests -p "test_*.py" -v
+```
+
+---
+
+## Repeatable Full-Project Verification Workflow (Module 10)
+
+A single master verification script orchestrates the entire compilation, unit testing, integration testing, IPC streaming, headless visualizer rendering, and benchmark smoke testing:
+
+```bash
+./scripts/run_all_tests.sh
+```
+
+### Verification Pipeline Sequence
+The script runs the following steps in strict order and aborts with a non-zero exit code if any required step fails:
+
+1. **Compile & Run C++ Unit Test Suites:**
+   - Module 2 Strategy (`bin/test_strategy`)
+   - Module 3 Order representation (`bin/test_order`)
+   - Module 4 Execution engine & order book (`bin/test_execution_engine`)
+   - Module 5 Portfolio & P&L accounting (`bin/test_portfolio`)
+   - Module 6 Risk manager pre-trade checks (`bin/test_risk_manager`)
+   - Module 7 IPC protocol serialization/parsing (`bin/test_ipc_protocol`)
+   - Module 9 Benchmark utilities & calculations (`bin/test_benchmark`)
+2. **Compile Standalone Executables:**
+   - C++ IPC Producer (`bin/ipc_producer`)
+   - Market Data Benchmark (`bin/benchmark_market_data`)
+   - Order Execution Benchmark (`bin/benchmark_order_execution`)
+3. **Run All Python Unit & Integration Tests:**
+   - Discovers and executes all 56 tests in `test_ipc_consumer.py`, `test_dashboard.py`, and `test_integration.py`.
+4. **End-to-End IPC Stream Verification:**
+   - Runs `visualizer/run_ipc_demo.py` with real producer over standard OS pipes.
+5. **Headless Live Visualizer Dashboard Smoke Test:**
+   - Runs `visualizer/dashboard.py --headless` using Matplotlib's non-interactive `Agg` backend to generate a verified PNG snapshot without requiring a GUI window.
+6. **Benchmark Smoke Tests (Small Workloads):**
+   - Runs small isolated workloads (1,000 operations, 500 latency samples) through `bin/benchmark_market_data` and `bin/benchmark_order_execution`.
+   - Validates CSV output generation, headers, and fields, then cleans up temporary files without touching tracked repository sources.
+7. **Pass/Fail Summary:**
+   - Prints a formatted summary table of all 15 verification steps.
+
+### Headless vs. Interactive Execution
+- **Automated Verification:** The entire test suite and `./scripts/run_all_tests.sh` workflow is **100% headless**. It uses Matplotlib's non-interactive `Agg` backend and does not require an active display server, making it suitable for remote servers, CI pipelines, and SSH sessions.
+- **Interactive Visualization:** The graphical dashboard window is opened only when explicitly requested by running `python3 visualizer/dashboard.py` without the `--headless` flag.
+
+### Platform Considerations & macOS Limitations
+- **Timer Quantization on Apple Silicon:** On macOS ARM64 systems, `std::chrono::steady_clock` uses a hardware counter running at 24 MHz (~41.67 ns per tick). Single-operation measurements under ~42 ns are discretized to integer multiples of 41.67 ns. Batched latency measurements amortize timer overhead across batches of 100–1000 operations, providing true sub-nanosecond effective latency distributions.
+- **Interactive GUI Backend:** The interactive Matplotlib GUI requires an active Cocoa window session. In headless environments (CI, remote terminals), use `--headless --output <path.png>`.
+- **Subprocess and Pipe Lifecycle:** All child processes spawned via OS pipes are monitored and strictly reaped (`wait()`) during normal completion, exception handling, and window closure, preventing zombie processes or pipe buffer deadlocks.

@@ -449,11 +449,17 @@ class IPCLauncher:
                 except Exception:
                     try:
                         process.kill()
+                        process.wait(timeout=1.0)
                     except Exception:
                         pass
             raise
 
         finally:
+            if stderr_thread and stderr_thread.is_alive():
+                try:
+                    stderr_thread.join(timeout=1.0)
+                except Exception:
+                    pass
             # Guarantee stream closure
             if process:
                 if process.stdout and not process.stdout.closed:
@@ -487,5 +493,6 @@ class IPCLauncher:
             except Exception:
                 try:
                     proc.kill()
+                    proc.wait(timeout=1.0)
                 except Exception:
                     pass

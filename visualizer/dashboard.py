@@ -382,6 +382,10 @@ def main() -> int:
         print(f"[ERROR] {ex}", file=sys.stderr)
         return 1
 
+    if not os.path.isfile(launcher.executable_path):
+        print(f"[ERROR] Producer executable not found at '{launcher.executable_path}'", file=sys.stderr)
+        return 1
+
     if args.headless:
         # Use headless non-interactive backend
         plt.switch_backend("Agg")
@@ -394,7 +398,15 @@ def main() -> int:
 
         # Process all remaining events and render final snapshot
         dashboard.update_frame(0)
+        out_path = Path(args.output)
+        if out_path.parent:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
         dashboard.fig.savefig(args.output, dpi=120)
+        plt.close(dashboard.fig)
+        if dashboard.state.status == EngineStatus.ERROR:
+            err = dashboard.state.error_message or "Unknown simulation error"
+            print(f"[ERROR] Simulation ended with error: {err}", file=sys.stderr)
+            return 1
         print(f"[INFO] Headless dashboard rendered and saved to '{args.output}'.")
         return 0
     else:

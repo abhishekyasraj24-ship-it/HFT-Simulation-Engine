@@ -5,7 +5,9 @@
 #include "Portfolio.hpp"
 #include "RiskManager.hpp"
 
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,6 +23,8 @@ int main(int argc, char* argv[]) {
     std::uint32_t seed = 42;
     double initial_price = 100.0;
     double starting_cash = 10000.0;
+    std::uint32_t max_order_qty = 200;
+    std::uint32_t max_position_qty = 500;
     bool force_fail = false;
 
     // Parse command line arguments
@@ -29,38 +33,135 @@ int main(int argc, char* argv[]) {
         if (arg == "-h" || arg == "--help") {
             std::cerr << "Usage: " << argv[0] << " [options]\n"
                       << "Options:\n"
-                      << "  --ticks <N>        Number of market ticks (default: 10)\n"
-                      << "  --seed <N>         Random seed for reproducibility (default: 42)\n"
-                      << "  --price <P>        Starting market price (default: 100.0)\n"
-                      << "  --cash <C>         Starting portfolio cash (default: 10000.0)\n"
-                      << "  --fail-for-test    Simulate abnormal producer exit (for IPC error tests)\n";
+                      << "  --ticks <N>          Number of market ticks (default: 10)\n"
+                      << "  --seed <N>           Random seed for reproducibility (default: 42)\n"
+                      << "  --price <P>          Starting market price (default: 100.0)\n"
+                      << "  --cash <C>           Starting portfolio cash (default: 10000.0)\n"
+                      << "  --max-order-qty <Q>  Maximum units per order for risk check (default: 200)\n"
+                      << "  --max-position <P>   Maximum position units for risk check (default: 500)\n"
+                      << "  --fail-for-test      Simulate abnormal producer exit (for IPC error tests)\n";
             return 0;
         } else if (arg == "--ticks" && i + 1 < argc) {
+            std::string val_str = argv[++i];
             try {
-                total_ticks = std::stoul(argv[++i]);
+                std::size_t pos = 0;
+                long long val = std::stoll(val_str, &pos);
+                if (pos != val_str.size()) {
+                    std::cerr << "[IPC Producer] Error: Invalid --ticks value: " << val_str << "\n";
+                    return 1;
+                }
+                if (val < 0) {
+                    std::cerr << "[IPC Producer] Error: --ticks cannot be negative: " << val << "\n";
+                    return 1;
+                }
+                total_ticks = static_cast<std::size_t>(val);
             } catch (const std::exception&) {
-                std::cerr << "[IPC Producer] Error: Invalid --ticks value: " << argv[i] << "\n";
+                std::cerr << "[IPC Producer] Error: Invalid --ticks value: " << val_str << "\n";
                 return 1;
             }
         } else if (arg == "--seed" && i + 1 < argc) {
+            std::string val_str = argv[++i];
             try {
-                seed = static_cast<std::uint32_t>(std::stoul(argv[++i]));
+                std::size_t pos = 0;
+                long long val = std::stoll(val_str, &pos);
+                if (pos != val_str.size()) {
+                    std::cerr << "[IPC Producer] Error: Invalid --seed value: " << val_str << "\n";
+                    return 1;
+                }
+                if (val < 0) {
+                    std::cerr << "[IPC Producer] Error: --seed cannot be negative: " << val << "\n";
+                    return 1;
+                }
+                if (val > static_cast<long long>(std::numeric_limits<std::uint32_t>::max())) {
+                    std::cerr << "[IPC Producer] Error: --seed exceeds 32-bit limit ("
+                              << std::numeric_limits<std::uint32_t>::max() << "): " << val << "\n";
+                    return 1;
+                }
+                seed = static_cast<std::uint32_t>(val);
             } catch (const std::exception&) {
-                std::cerr << "[IPC Producer] Error: Invalid --seed value: " << argv[i] << "\n";
+                std::cerr << "[IPC Producer] Error: Invalid --seed value: " << val_str << "\n";
                 return 1;
             }
         } else if (arg == "--price" && i + 1 < argc) {
+            std::string val_str = argv[++i];
             try {
-                initial_price = std::stod(argv[++i]);
+                std::size_t pos = 0;
+                double val = std::stod(val_str, &pos);
+                if (pos != val_str.size()) {
+                    std::cerr << "[IPC Producer] Error: Invalid --price value: " << val_str << "\n";
+                    return 1;
+                }
+                if (val <= 0.0 || !std::isfinite(val)) {
+                    std::cerr << "[IPC Producer] Error: --price must be strictly positive and finite: " << val_str << "\n";
+                    return 1;
+                }
+                initial_price = val;
             } catch (const std::exception&) {
-                std::cerr << "[IPC Producer] Error: Invalid --price value: " << argv[i] << "\n";
+                std::cerr << "[IPC Producer] Error: Invalid --price value: " << val_str << "\n";
                 return 1;
             }
         } else if (arg == "--cash" && i + 1 < argc) {
+            std::string val_str = argv[++i];
             try {
-                starting_cash = std::stod(argv[++i]);
+                std::size_t pos = 0;
+                double val = std::stod(val_str, &pos);
+                if (pos != val_str.size()) {
+                    std::cerr << "[IPC Producer] Error: Invalid --cash value: " << val_str << "\n";
+                    return 1;
+                }
+                if (val < 0.0 || !std::isfinite(val)) {
+                    std::cerr << "[IPC Producer] Error: --cash cannot be negative: " << val_str << "\n";
+                    return 1;
+                }
+                starting_cash = val;
             } catch (const std::exception&) {
-                std::cerr << "[IPC Producer] Error: Invalid --cash value: " << argv[i] << "\n";
+                std::cerr << "[IPC Producer] Error: Invalid --cash value: " << val_str << "\n";
+                return 1;
+            }
+        } else if (arg == "--max-order-qty" && i + 1 < argc) {
+            std::string val_str = argv[++i];
+            try {
+                std::size_t pos = 0;
+                long long val = std::stoll(val_str, &pos);
+                if (pos != val_str.size()) {
+                    std::cerr << "[IPC Producer] Error: Invalid --max-order-qty value: " << val_str << "\n";
+                    return 1;
+                }
+                if (val <= 0) {
+                    std::cerr << "[IPC Producer] Error: --max-order-qty must be strictly positive: " << val << "\n";
+                    return 1;
+                }
+                if (val > static_cast<long long>(std::numeric_limits<std::uint32_t>::max())) {
+                    std::cerr << "[IPC Producer] Error: --max-order-qty exceeds 32-bit limit ("
+                              << std::numeric_limits<std::uint32_t>::max() << "): " << val << "\n";
+                    return 1;
+                }
+                max_order_qty = static_cast<std::uint32_t>(val);
+            } catch (const std::exception&) {
+                std::cerr << "[IPC Producer] Error: Invalid --max-order-qty value: " << val_str << "\n";
+                return 1;
+            }
+        } else if (arg == "--max-position" && i + 1 < argc) {
+            std::string val_str = argv[++i];
+            try {
+                std::size_t pos = 0;
+                long long val = std::stoll(val_str, &pos);
+                if (pos != val_str.size()) {
+                    std::cerr << "[IPC Producer] Error: Invalid --max-position value: " << val_str << "\n";
+                    return 1;
+                }
+                if (val <= 0) {
+                    std::cerr << "[IPC Producer] Error: --max-position must be strictly positive: " << val << "\n";
+                    return 1;
+                }
+                if (val > static_cast<long long>(std::numeric_limits<std::uint32_t>::max())) {
+                    std::cerr << "[IPC Producer] Error: --max-position exceeds 32-bit limit ("
+                              << std::numeric_limits<std::uint32_t>::max() << "): " << val << "\n";
+                    return 1;
+                }
+                max_position_qty = static_cast<std::uint32_t>(val);
+            } catch (const std::exception&) {
+                std::cerr << "[IPC Producer] Error: Invalid --max-position value: " << val_str << "\n";
                 return 1;
             }
         } else if (arg == "--fail-for-test") {
@@ -90,8 +191,8 @@ int main(int argc, char* argv[]) {
         ExecutionEngine execution_engine;
         Portfolio portfolio(starting_cash);
         RiskLimits limits;
-        limits.max_position_quantity = 500;
-        limits.max_order_quantity = 200;
+        limits.max_position_quantity = max_position_qty;
+        limits.max_order_quantity = max_order_qty;
         limits.max_order_notional = 25000.0;
         limits.max_gross_exposure = 50000.0;
         RiskManager risk_manager(limits);
@@ -104,7 +205,7 @@ int main(int argc, char* argv[]) {
         std::size_t portfolio_updates_emitted = 1; // initial state
         OrderId next_order_id = 1;
 
-        while (generator.has_next_tick()) {
+        while (generator.has_next_tick() && std::cout.good()) {
             MarketTick tick = generator.next_tick();
             ++ticks_emitted;
 
@@ -128,6 +229,9 @@ int main(int argc, char* argv[]) {
                         writer.write_trade(trade);
                         portfolio.apply_trade(trade, OrderSide::Buy);
                     }
+                } else {
+                    std::cerr << "[IPC Producer] Risk check rejected order #" << buy_order.id
+                              << ": " << risk_res.rejection_reason << "\n";
                 }
             }
 
@@ -147,6 +251,9 @@ int main(int argc, char* argv[]) {
                         writer.write_trade(trade);
                         portfolio.apply_trade(trade, OrderSide::Sell);
                     }
+                } else {
+                    std::cerr << "[IPC Producer] Risk check rejected order #" << sell_order.id
+                              << ": " << risk_res.rejection_reason << "\n";
                 }
             }
 
